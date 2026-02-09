@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "path";
@@ -9,6 +10,7 @@ import {
   CourseStatus,
   LessonProgressStatus,
   QuestionType,
+  TeamMemberRole,
 } from "../app/db/schema";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -50,6 +52,9 @@ async function seed() {
     DROP TABLE IF EXISTS quiz_questions;
     DROP TABLE IF EXISTS quizzes;
     DROP TABLE IF EXISTS lesson_progress;
+    DROP TABLE IF EXISTS coupons;
+    DROP TABLE IF EXISTS team_members;
+    DROP TABLE IF EXISTS teams;
     DROP TABLE IF EXISTS purchases;
     DROP TABLE IF EXISTS enrollments;
     DROP TABLE IF EXISTS lessons;
@@ -166,9 +171,7 @@ async function seed() {
     .returning()
     .all();
 
-  const catBySlug = Object.fromEntries(
-    categoriesData.map((c) => [c.slug, c])
-  );
+  const catBySlug = Object.fromEntries(categoriesData.map((c) => [c.slug, c]));
 
   console.log(`Created ${categoriesData.length} categories.`);
 
@@ -231,7 +234,8 @@ By the end of this course, you'll understand why TypeScript has become the defau
           title: "What is TypeScript?",
           duration: 8,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          githubRepoUrl: "https://github.com/total-typescript/ts-intro-what-is-ts",
+          githubRepoUrl:
+            "https://github.com/total-typescript/ts-intro-what-is-ts",
           content: `## What is TypeScript?
 
 TypeScript is a typed superset of JavaScript that compiles to plain JavaScript. It adds optional static typing and class-based object-oriented programming to the language.
@@ -266,7 +270,8 @@ The \`tsconfig.json\` file configures the TypeScript compiler options for your p
           title: "Your First TypeScript Program",
           duration: 15,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          githubRepoUrl: "https://github.com/total-typescript/ts-intro-first-program",
+          githubRepoUrl:
+            "https://github.com/total-typescript/ts-intro-first-program",
           content: `## Hello, TypeScript!
 
 Let's write our first TypeScript program and see the compilation process in action.
@@ -377,7 +382,8 @@ const multiply: (a: number, b: number) => number = (a, b) => a * b;
           title: "Generics Basics",
           duration: 20,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          githubRepoUrl: "https://github.com/total-typescript/ts-generics-basics",
+          githubRepoUrl:
+            "https://github.com/total-typescript/ts-generics-basics",
           content: `## Introduction to Generics
 
 Generics let you write reusable code that works with multiple types while maintaining type safety.
@@ -527,7 +533,8 @@ type CSSProperty = \\\`color-\\\${Color}\\\`;
           title: "TypeScript with React",
           duration: 22,
           videoUrl: "https://www.youtube.com/watch?v=zQnBQ4tB3ZA",
-          githubRepoUrl: "https://github.com/total-typescript/ts-react-examples",
+          githubRepoUrl:
+            "https://github.com/total-typescript/ts-react-examples",
           content: `## TypeScript + React
 
 Learn how to use TypeScript effectively in React applications.
@@ -607,7 +614,9 @@ Practice by converting an existing JavaScript project to TypeScript. Start with 
           title: lessonData.title,
           content: lessonData.content,
           videoUrl: lessonData.videoUrl ?? null,
-          githubRepoUrl: ("githubRepoUrl" in lessonData ? lessonData.githubRepoUrl : null) ?? null,
+          githubRepoUrl:
+            ("githubRepoUrl" in lessonData ? lessonData.githubRepoUrl : null) ??
+            null,
           position: li + 1,
           durationMinutes: lessonData.duration,
           createdAt: daysAgo(90 - mi),
@@ -700,7 +709,8 @@ REST (Representational State Transfer) is an architectural style for designing n
           title: "Setting Up Express",
           duration: 15,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          githubRepoUrl: "https://github.com/total-typescript/rest-api-express-setup",
+          githubRepoUrl:
+            "https://github.com/total-typescript/rest-api-express-setup",
           content: `## Express.js Setup
 
 Express is the most popular Node.js web framework for building APIs.
@@ -862,7 +872,8 @@ const db = drizzle(sqlite);
           title: "CRUD Operations",
           duration: 20,
           videoUrl: "https://www.youtube.com/watch?v=lsMQRaeKNDk",
-          githubRepoUrl: "https://github.com/total-typescript/rest-api-crud-operations",
+          githubRepoUrl:
+            "https://github.com/total-typescript/rest-api-crud-operations",
           content: `## Building CRUD Endpoints
 
 Implement Create, Read, Update, Delete operations for your API resources.
@@ -1104,7 +1115,9 @@ You've completed the Building REST APIs course. You now have the skills to build
           title: lessonData.title,
           content: lessonData.content,
           videoUrl: lessonData.videoUrl ?? null,
-          githubRepoUrl: ("githubRepoUrl" in lessonData ? lessonData.githubRepoUrl : null) ?? null,
+          githubRepoUrl:
+            ("githubRepoUrl" in lessonData ? lessonData.githubRepoUrl : null) ??
+            null,
           position: li + 1,
           durationMinutes: lessonData.duration,
           createdAt: daysAgo(75 - mi),
@@ -1164,7 +1177,11 @@ You've completed the Building REST APIs course. You now have the skills to build
     },
   ];
 
-  const quiz1OptionIds: { questionId: number; optionId: number; correct: boolean }[] = [];
+  const quiz1OptionIds: {
+    questionId: number;
+    optionId: number;
+    correct: boolean;
+  }[] = [];
 
   for (let qi = 0; qi < quiz1Questions.length; qi++) {
     const q = quiz1Questions[qi];
@@ -1229,7 +1246,11 @@ You've completed the Building REST APIs course. You now have the skills to build
     },
   ];
 
-  const quiz2OptionIds: { questionId: number; optionId: number; correct: boolean }[] = [];
+  const quiz2OptionIds: {
+    questionId: number;
+    optionId: number;
+    correct: boolean;
+  }[] = [];
 
   for (let qi = 0; qi < quiz2Questions.length; qi++) {
     const q = quiz2Questions[qi];
@@ -1304,7 +1325,11 @@ You've completed the Building REST APIs course. You now have the skills to build
     },
   ];
 
-  const quiz3OptionIds: { questionId: number; optionId: number; correct: boolean }[] = [];
+  const quiz3OptionIds: {
+    questionId: number;
+    optionId: number;
+    correct: boolean;
+  }[] = [];
 
   for (let qi = 0; qi < quiz3Questions.length; qi++) {
     const q = quiz3Questions[qi];
@@ -1369,7 +1394,11 @@ You've completed the Building REST APIs course. You now have the skills to build
   // ─── Lesson Progress ───
 
   // Helper to mark lessons as complete
-  function markComplete(userId: number, lessonId: number, daysAgoCompleted: number) {
+  function markComplete(
+    userId: number,
+    lessonId: number,
+    daysAgoCompleted: number
+  ) {
     db.insert(schema.lessonProgress)
       .values({
         userId,
@@ -1463,7 +1492,7 @@ You've completed the Building REST APIs course. You now have the skills to build
     for (let qi = 0; qi < questionIds.length; qi++) {
       const qId = questionIds[qi];
       const qOptions = optionIds.filter((o) => o.questionId === qId);
-      let selectedOption: typeof qOptions[0];
+      let selectedOption: (typeof qOptions)[0];
 
       if (selectedCorrectIndices.includes(qi)) {
         // Pick correct answer
@@ -1552,12 +1581,150 @@ You've completed the Building REST APIs course. You now have the skills to build
 
   console.log("Created video watch events.");
 
+  // ─── Purchases ───
+  // Individual purchases for enrolled students
+
+  const [purchase1] = db
+    .insert(schema.purchases)
+    .values({
+      userId: students[0].id, // Emma — bought course 1 individually
+      courseId: course1.id,
+      pricePaid: 4999,
+      country: "US",
+      createdAt: daysAgo(50),
+    })
+    .returning()
+    .all();
+
+  db.insert(schema.purchases)
+    .values({
+      userId: students[0].id, // Emma — bought course 2 individually
+      courseId: course2.id,
+      pricePaid: 5999,
+      country: "US",
+      createdAt: daysAgo(40),
+    })
+    .run();
+
+  db.insert(schema.purchases)
+    .values({
+      userId: students[1].id, // James — bought course 1 with PPP discount (India)
+      courseId: course1.id,
+      pricePaid: 2500,
+      country: "IN",
+      createdAt: daysAgo(45),
+    })
+    .run();
+
+  db.insert(schema.purchases)
+    .values({
+      userId: students[2].id, // Olivia — bought course 1 individually
+      courseId: course1.id,
+      pricePaid: 4999,
+      country: "US",
+      createdAt: daysAgo(35),
+    })
+    .run();
+
+  db.insert(schema.purchases)
+    .values({
+      userId: students[4].id, // Sophia — bought course 1 individually
+      courseId: course1.id,
+      pricePaid: 4999,
+      country: "US",
+      createdAt: daysAgo(15),
+    })
+    .run();
+
+  console.log("Created 5 individual purchases.");
+
+  // ─── Teams, Team Members, and Coupons ───
+  // Admin bought 5 team seats for course 2; Olivia and Liam redeemed coupons
+
+  const [team1] = db
+    .insert(schema.teams)
+    .values({ createdAt: daysAgo(30) })
+    .returning()
+    .all();
+
+  db.insert(schema.teamMembers)
+    .values({
+      teamId: team1.id,
+      userId: admin.id,
+      role: TeamMemberRole.Admin,
+      createdAt: daysAgo(30),
+    })
+    .run();
+
+  // Team purchase by admin for course 2 (5 seats)
+  const [teamPurchase] = db
+    .insert(schema.purchases)
+    .values({
+      userId: admin.id,
+      courseId: course2.id,
+      pricePaid: 5999 * 5,
+      country: "US",
+      createdAt: daysAgo(30),
+    })
+    .returning()
+    .all();
+
+  // Generate 5 coupons for the team purchase
+  const couponCodes = [
+    "TEAM-NODEJS-A1B2C3",
+    "TEAM-NODEJS-D4E5F6",
+    "TEAM-NODEJS-G7H8I9",
+    "TEAM-NODEJS-J0K1L2",
+    "TEAM-NODEJS-M3N4O5",
+  ];
+
+  const seededCoupons = db
+    .insert(schema.coupons)
+    .values(
+      couponCodes.map((code) => ({
+        teamId: team1.id,
+        courseId: course2.id,
+        code,
+        purchaseId: teamPurchase.id,
+        createdAt: daysAgo(30),
+      }))
+    )
+    .returning()
+    .all();
+
+  // Redeem 2 coupons: Olivia (students[2]) and Liam (students[3])
+  // Olivia already has an enrollment for course 2 from the enrollments section above
+  db.update(schema.coupons)
+    .set({
+      redeemedByUserId: students[2].id,
+      redeemedAt: daysAgo(30),
+    })
+    .where(eq(schema.coupons.id, seededCoupons[0].id))
+    .run();
+
+  // Liam already has an enrollment for course 2 from the enrollments section above
+  db.update(schema.coupons)
+    .set({
+      redeemedByUserId: students[3].id,
+      redeemedAt: daysAgo(25),
+    })
+    .where(eq(schema.coupons.id, seededCoupons[1].id))
+    .run();
+
+  console.log(
+    `Created 1 team with 1 admin, 1 team purchase, and ${seededCoupons.length} coupons (2 redeemed, 3 available).`
+  );
+
   console.log("\n✓ Seed complete!");
   console.log("  Users: 8 (1 admin, 2 instructors, 5 students)");
   console.log("  Categories: 5");
-  console.log(`  Courses: 2 (${course1LessonIds.length} + ${course2LessonIds.length} lessons)`);
+  console.log(
+    `  Courses: 2 (${course1LessonIds.length} + ${course2LessonIds.length} lessons)`
+  );
   console.log("  Quizzes: 3");
   console.log("  Enrollments: 7");
+  console.log("  Purchases: 6 (5 individual + 1 team)");
+  console.log("  Teams: 1 (with 5 coupons)");
 }
 
 seed().catch(console.error);

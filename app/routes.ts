@@ -30,6 +30,10 @@ export default [
       "routes/instructor.$courseId.lessons.$lessonId.quiz.tsx"
     ),
     route(
+      "instructor/:courseId/modules/:moduleId",
+      "routes/instructor.$courseId.modules.$moduleId.tsx"
+    ),
+    route(
       "instructor/:courseId/students",
       "routes/instructor.$courseId.students.tsx"
     ),

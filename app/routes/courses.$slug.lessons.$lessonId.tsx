@@ -313,12 +313,6 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
     lessonStatus === LessonProgressStatus.Completed ||
     fetcher.data?.success;
 
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.success) {
-      toast.success("Lesson marked as complete!");
-    }
-  }, [fetcher.state, fetcher.data]);
-
   const quizResult = quizFetcher.data?.quizResult ?? null;
   const isSubmittingQuiz = quizFetcher.state !== "idle";
 

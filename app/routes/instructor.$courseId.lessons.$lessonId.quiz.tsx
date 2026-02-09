@@ -49,6 +49,44 @@ import {
   type DropResult,
 } from "@hello-pangea/dnd";
 import { data, isRouteErrorResponse } from "react-router";
+import { z } from "zod";
+import { parseFormData, parseParams } from "~/lib/validation";
+
+const quizParamsSchema = z.object({
+  courseId: z.coerce.number().int(),
+  lessonId: z.coerce.number().int(),
+});
+
+const wizardDataSchema = z.object({
+  title: z.string().trim().min(1, "Quiz title is required."),
+  passingScore: z.number(),
+  questions: z
+    .array(
+      z.object({
+        id: z.string(),
+        text: z.string(),
+        type: z.nativeEnum(QuestionType),
+        options: z.array(
+          z.object({
+            id: z.string(),
+            text: z.string(),
+            isCorrect: z.boolean(),
+          })
+        ),
+      })
+    )
+    .min(1, "At least one question is required."),
+});
+
+const quizActionSchema = z.discriminatedUnion("intent", [
+  z.object({
+    intent: z.literal("save-quiz"),
+    wizardData: z.string(),
+  }),
+  z.object({
+    intent: z.literal("delete-quiz"),
+  }),
+]);
 
 // ─── Types for wizard state ───
 
@@ -153,13 +191,13 @@ export async function action({ params, request }: Route.ActionArgs) {
     throw data("Only instructors and admins can manage quizzes.", { status: 403 });
   }
 
-  const courseId = parseInt(params.courseId, 10);
+  const { courseId, lessonId } = parseParams(params, quizParamsSchema);
+
   const course = getCourseById(courseId);
   if (!course || (course.instructorId !== currentUserId && user.role !== UserRole.Admin)) {
     throw data("Course not found or not yours.", { status: 403 });
   }
 
-  const lessonId = parseInt(params.lessonId, 10);
   const lesson = getLessonById(lessonId);
   if (!lesson) {
     throw data("Lesson not found.", { status: 404 });
@@ -171,30 +209,25 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
-  const intent = formData.get("intent") as string;
+  const parsed = parseFormData(formData, quizActionSchema);
+
+  if (!parsed.success) {
+    return data({ error: Object.values(parsed.errors)[0] ?? "Invalid input." }, { status: 400 });
+  }
+
+  const { intent } = parsed.data;
 
   if (intent === "save-quiz") {
-    const wizardDataStr = formData.get("wizardData") as string;
-    if (!wizardDataStr) {
-      return data({ error: "Missing quiz data." }, { status: 400 });
-    }
-
-    let wizardData: WizardState;
+    let wizardData: z.infer<typeof wizardDataSchema>;
     try {
-      wizardData = JSON.parse(wizardDataStr);
+      const raw = JSON.parse(parsed.data.wizardData);
+      const wizardResult = wizardDataSchema.safeParse(raw);
+      if (!wizardResult.success) {
+        return data({ error: "Invalid quiz data." }, { status: 400 });
+      }
+      wizardData = wizardResult.data;
     } catch {
       return data({ error: "Invalid quiz data." }, { status: 400 });
-    }
-
-    if (!wizardData.title.trim()) {
-      return data({ error: "Quiz title is required." }, { status: 400 });
-    }
-
-    if (wizardData.questions.length === 0) {
-      return data(
-        { error: "At least one question is required." },
-        { status: 400 }
-      );
     }
 
     // Delete existing quiz if present

@@ -16,6 +16,20 @@ import { Label } from "~/components/ui/label";
 import { MonacoMarkdownEditor } from "~/components/monaco-markdown-editor";
 import { AlertTriangle, ArrowLeft, ClipboardList, ExternalLink, Save } from "lucide-react";
 import { data, isRouteErrorResponse } from "react-router";
+import { z } from "zod";
+import { parseFormData, parseParams } from "~/lib/validation";
+
+const instructorLessonParamsSchema = z.object({
+  courseId: z.coerce.number().int(),
+  lessonId: z.coerce.number().int(),
+});
+
+const updateLessonSchema = z.object({
+  intent: z.literal("update-lesson"),
+  content: z.string().optional(),
+  videoUrl: z.string().trim().optional(),
+  durationMinutes: z.string().optional(),
+});
 
 export function meta({ data: loaderData }: Route.MetaArgs) {
   const title = loaderData?.lesson?.title ?? "Edit Lesson";
@@ -89,10 +103,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     throw data("Only instructors and admins can edit lessons.", { status: 403 });
   }
 
-  const courseId = parseInt(params.courseId, 10);
-  if (isNaN(courseId)) {
-    throw data("Invalid course ID.", { status: 400 });
-  }
+  const { courseId, lessonId } = parseParams(params, instructorLessonParamsSchema);
 
   const course = getCourseById(courseId);
   if (!course) {
@@ -101,11 +112,6 @@ export async function action({ params, request }: Route.ActionArgs) {
 
   if (course.instructorId !== currentUserId && user.role !== UserRole.Admin) {
     throw data("You can only edit your own courses.", { status: 403 });
-  }
-
-  const lessonId = parseInt(params.lessonId, 10);
-  if (isNaN(lessonId)) {
-    throw data("Invalid lesson ID.", { status: 400 });
   }
 
   const lesson = getLessonById(lessonId);
@@ -119,19 +125,21 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
-  const intent = formData.get("intent") as string;
+  const parsed = parseFormData(formData, updateLessonSchema);
 
-  if (intent === "update-lesson") {
-    const content = formData.get("content") as string | null;
-    const videoUrl = (formData.get("videoUrl") as string)?.trim() || null;
-    const durationStr = formData.get("durationMinutes") as string;
+  if (!parsed.success) {
+    return data({ error: Object.values(parsed.errors)[0] ?? "Invalid input." }, { status: 400 });
+  }
+
+  if (parsed.data.intent === "update-lesson") {
+    const { content, videoUrl, durationMinutes: durationStr } = parsed.data;
     const durationMinutes = durationStr ? parseInt(durationStr, 10) : null;
 
     if (durationMinutes !== null && (isNaN(durationMinutes) || durationMinutes < 0)) {
       return data({ error: "Duration must be a positive number." }, { status: 400 });
     }
 
-    updateLesson(lessonId, null, content ?? null, videoUrl, durationMinutes);
+    updateLesson(lessonId, null, content ?? null, videoUrl || null, durationMinutes);
     return { success: true };
   }
 

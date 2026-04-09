@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams, useFetcher } from "react-router";
 import { toast } from "sonner";
 import type { Route } from "./+types/courses.$slug";
 import {
@@ -42,6 +42,8 @@ import { formatDuration, formatPrice } from "~/lib/utils";
 import { renderMarkdown } from "~/lib/markdown.server";
 import { resolveCountry } from "~/lib/country.server";
 import { calculatePppPrice, getCountryTierInfo } from "~/lib/ppp";
+import { getCourseRatingStats, getUserCourseRating } from "~/services/ratingService";
+import { StarRating, CourseRatingDisplay } from "~/components/star-rating";
 
 export function meta({ data: loaderData }: Route.MetaArgs) {
   const title = loaderData?.course?.title ?? "Course";
@@ -102,6 +104,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     : courseWithDetails.price;
   const tierInfo = getCountryTierInfo(country);
 
+  const ratingStats = getCourseRatingStats(course.id);
+  const userRating = currentUserId ? getUserCourseRating(currentUserId, course.id) : null;
+
   return {
     course: courseWithDetails,
     salesCopyHtml,
@@ -113,6 +118,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     currentUserId,
     pppPrice,
     tierInfo,
+    ratingStats,
+    userRating,
   };
 }
 
@@ -181,9 +188,22 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
     currentUserId,
     pppPrice,
     tierInfo,
+    ratingStats,
+    userRating,
   } = loaderData;
   const isInstructor = currentUserId === course.instructorId;
   const [searchParams, setSearchParams] = useSearchParams();
+  const ratingFetcher = useFetcher();
+  const [pendingRating, setPendingRating] = useState<number | null>(null);
+  const displayRating = pendingRating ?? userRating ?? 0;
+
+  function submitRating(rating: number) {
+    setPendingRating(rating);
+    ratingFetcher.submit(
+      { courseId: course.id, rating },
+      { method: "post", action: "/api/course-rating", encType: "application/json" }
+    );
+  }
 
   useEffect(() => {
     if (searchParams.get("already_enrolled") === "1") {
@@ -301,7 +321,7 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
         <p className="mb-4 text-lg text-muted-foreground">
           {course.description}
         </p>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <UserAvatar
               name={course.instructorName}
@@ -319,6 +339,13 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
               <Clock className="size-4" />
               {formatDuration(totalDuration, true, false, false)} total
             </span>
+          )}
+          {ratingStats.count > 0 && (
+            <CourseRatingDisplay
+              average={ratingStats.average}
+              count={ratingStats.count}
+              size="sm"
+            />
           )}
         </div>
       </div>
@@ -413,6 +440,16 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
                       Buy More Seats
                     </Button>
                   </Link>
+                  <div className="border-t pt-3">
+                    <p className="mb-2 text-sm font-medium">
+                      {displayRating > 0 ? "Your rating" : "Rate this course"}
+                    </p>
+                    <StarRating
+                      value={displayRating}
+                      onChange={submitRating}
+                      size="md"
+                    />
+                  </div>
                 </>
               ) : (
                 enrollButton

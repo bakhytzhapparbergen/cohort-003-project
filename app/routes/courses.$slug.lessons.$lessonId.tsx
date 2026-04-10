@@ -26,7 +26,7 @@ import {
   getBestAttempt,
 } from "~/services/quizService";
 import { computeResult } from "~/services/quizScoringService";
-import { LessonProgressStatus } from "~/db/schema";
+import { LessonProgressStatus, UserRole } from "~/db/schema";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import {
@@ -55,6 +55,14 @@ import { resolveCountry } from "~/lib/country.server";
 import { checkPppAccess, COUNTRIES } from "~/lib/ppp";
 import { findPurchase } from "~/services/purchaseService";
 import { parseFormData, parseParams } from "~/lib/validation";
+import {
+  addComment,
+  deleteComment,
+  getLessonComments,
+  type CommentWithUser,
+} from "~/services/commentService";
+import { CommentSection } from "~/components/comment-section";
+import { getUserById } from "~/services/userService";
 
 const lessonParamsSchema = z.object({
   slug: z.string().min(1),
@@ -203,6 +211,12 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const nextLesson =
     currentIndex < allLessons.length - 1 ? allLessons[currentIndex + 1] : null;
 
+  // Load comments for this lesson
+  const comments = getLessonComments(lessonId);
+  const currentUser = currentUserId ? getUserById(currentUserId) : null;
+  const isAdmin = currentUser?.role === UserRole.Admin;
+  const isInstructor = currentUserId === course.instructorId;
+
   // Check for quiz attached to this lesson
   const quizRecord = getQuizByLessonId(lessonId);
   let quiz: {
@@ -281,6 +295,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     pppBlocked,
     pppBlockedCountry,
     pppPurchaseCountry,
+    comments,
+    isInstructor,
+    isAdmin,
   };
 }
 
@@ -329,6 +346,36 @@ export async function action({ params, request }: Route.ActionArgs) {
     }
 
     return { quizResult: result };
+  }
+
+  if (intent === "add-comment") {
+    const content = String(formData.get("content") ?? "").trim();
+    if (!content || content.length > 2000) {
+      throw data("Comment must be between 1 and 2000 characters", { status: 400 });
+    }
+    const actor = getUserById(currentUserId);
+    const isAdmin = actor?.role === UserRole.Admin;
+    const isEnrolled = isUserEnrolled(currentUserId, course.id);
+    const isInstructor = currentUserId === course.instructorId;
+    if (!isEnrolled && !isInstructor && !isAdmin) {
+      throw data("You must be enrolled to comment", { status: 403 });
+    }
+    addComment(currentUserId, lessonId, content);
+    return { success: true };
+  }
+
+  if (intent === "delete-comment") {
+    const commentId = Number(formData.get("commentId"));
+    if (isNaN(commentId)) {
+      throw data("Invalid comment ID", { status: 400 });
+    }
+    const actor = getUserById(currentUserId);
+    const isAdmin = actor?.role === UserRole.Admin;
+    const deleted = deleteComment(commentId, currentUserId, course.instructorId, isAdmin);
+    if (!deleted) {
+      throw data("Not authorized to delete this comment", { status: 403 });
+    }
+    return { success: true };
   }
 
   throw data("Invalid action", { status: 400 });
@@ -382,6 +429,9 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
     pppBlocked,
     pppBlockedCountry,
     pppPurchaseCountry,
+    comments,
+    isInstructor,
+    isAdmin,
   } = loaderData;
   const [autoplay, toggleAutoplay] = useAutoplay();
   const fetcher = useFetcher({ key: `mark-complete-${lesson.id}` });
@@ -545,6 +595,15 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
               isSubmitting={isSubmittingQuiz}
             />
           )}
+
+          {/* Discussion / Comments */}
+          <CommentSection
+            comments={comments}
+            currentUserId={currentUserId}
+            isInstructor={isInstructor}
+            isAdmin={isAdmin}
+            canComment={enrolled || isInstructor || isAdmin}
+          />
 
           {/* Mark Complete / Up Next */}
           {enrolled && currentUserId && (

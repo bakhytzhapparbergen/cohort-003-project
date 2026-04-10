@@ -1,0 +1,1 @@
+ALTER TABLE `lesson_comments` ADD `is_deleted` integer DEFAULT false NOT NULL;

@@ -1,6 +1,7 @@
 ---
 name: better-sqlite3-rebuild
 description: Use when seeing errors about better-sqlite3 native module, NODE_MODULE_VERSION mismatch, "was compiled against a different Node.js version", or similar native binding errors.
+user-invocable: false
 ---
 
 # better-sqlite3 Rebuild

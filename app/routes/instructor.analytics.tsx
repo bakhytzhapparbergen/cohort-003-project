@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { data, isRouteErrorResponse } from "react-router";
 import type { Route } from "./+types/instructor.analytics";
@@ -5,15 +6,14 @@ import { getCurrentUserId } from "~/lib/session";
 import { getUserById } from "~/services/userService";
 import { getInstructorSummary, type Period } from "~/services/analyticsService";
 import { UserRole } from "~/db/schema";
+import { cn } from "~/lib/utils";
 import { Card, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
-import { AlertTriangle, BarChart3 } from "lucide-react";
-
-const VALID_PERIODS = ["7d", "30d", "12m"] as const;
+import { AlertTriangle, BarChart3, DollarSign, Star, Users } from "lucide-react";
 
 function parsePeriod(raw: string | null): Period {
-  if (raw === "7d" || raw === "30d" || raw === "12m") return raw;
+  if (raw === "7d" || raw === "30d" || raw === "12m" || raw === "all") return raw;
   return "30d";
 }
 
@@ -46,31 +46,37 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const summary = getInstructorSummary({ instructorId: currentUserId, period });
 
-  return { summary, period };
+  return { summary, period, role: user.role };
 }
 
 // ─── PeriodSelector ───────────────────────────────────────────────────────────
 
 function PeriodSelector({ currentPeriod }: { currentPeriod: Period }) {
   const [, setSearchParams] = useSearchParams();
+  const [activePeriod, setActivePeriod] = useState(currentPeriod);
 
   const options: { value: Period; label: string }[] = [
     { value: "7d", label: "7 days" },
     { value: "30d", label: "30 days" },
     { value: "12m", label: "12 months" },
+    { value: "all", label: "All time" },
   ];
 
   return (
-    <div className="flex gap-2">
+    <div className="inline-flex items-center gap-1 rounded-full border bg-muted p-1">
       {options.map(({ value, label }) => (
-        <Button
+        <button
           key={value}
-          variant={currentPeriod === value ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSearchParams({ period: value })}
+          onClick={() => { setActivePeriod(value); setSearchParams({ period: value }); }}
+          className={cn(
+            "rounded-full px-3 py-1.5 text-sm font-medium",
+            activePeriod === value
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
         >
           {label}
-        </Button>
+        </button>
       ))}
     </div>
   );
@@ -78,11 +84,22 @@ function PeriodSelector({ currentPeriod }: { currentPeriod: Period }) {
 
 // ─── SummaryCard ──────────────────────────────────────────────────────────────
 
-function SummaryCard({ value, label }: { value: string; label: string }) {
+function SummaryCard({
+  value,
+  label,
+  icon,
+}: {
+  value: string;
+  label: string;
+  icon: React.ReactNode;
+}) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>{label}</CardDescription>
+        <div className="flex items-center justify-between">
+          <CardDescription>{label}</CardDescription>
+          <span className="text-muted-foreground">{icon}</span>
+        </div>
         <CardTitle className="text-3xl font-bold">{value}</CardTitle>
       </CardHeader>
     </Card>
@@ -137,7 +154,7 @@ export function HydrateFallback() {
 // ─── Route Component ──────────────────────────────────────────────────────────
 
 export default function InstructorAnalytics({ loaderData }: Route.ComponentProps) {
-  const { summary, period } = loaderData;
+  const { summary, period, role } = loaderData;
   const hasActivity = summary.totalRevenue > 0 || summary.totalEnrollments > 0;
 
   return (
@@ -159,11 +176,13 @@ export default function InstructorAnalytics({ loaderData }: Route.ComponentProps
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Analytics</h1>
-          <p className="mt-1 text-muted-foreground">
-            Track your course revenue, enrollments, and ratings
-          </p>
+          {role === UserRole.Instructor && (
+            <p className="mt-1 text-muted-foreground">
+              Track your course revenue, enrollments, and ratings
+            </p>
+          )}
         </div>
-        <PeriodSelector currentPeriod={period} />
+        <PeriodSelector key="period-selector" currentPeriod={period} />
       </div>
 
       {/* Summary Cards */}
@@ -172,14 +191,17 @@ export default function InstructorAnalytics({ loaderData }: Route.ComponentProps
           <SummaryCard
             value={formatRevenue(summary.totalRevenue)}
             label="Total Revenue"
+            icon={<DollarSign className="size-4" />}
           />
           <SummaryCard
             value={summary.totalEnrollments.toLocaleString()}
             label="Total Enrollments"
+            icon={<Users className="size-4" />}
           />
           <SummaryCard
             value={formatRating(summary.avgRating, summary.ratingCount)}
             label={`Average Rating (${summary.ratingCount.toLocaleString()} ${summary.ratingCount === 1 ? "review" : "reviews"})`}
+            icon={<Star className="size-4" />}
           />
         </div>
       ) : (

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { data, isRouteErrorResponse } from "react-router";
-import type { Route } from "./+types/instructor.analytics";
+import type { Route } from "./+types/admin.analytics.$instructorId";
 import { getCurrentUserId } from "~/lib/session";
 import { getUserById } from "~/services/userService";
 import {
@@ -31,38 +31,54 @@ function parsePeriod(raw: string | null): Period {
   return "30d";
 }
 
-export function meta() {
+export function meta({ data: loaderData }: Route.MetaArgs) {
+  const name = loaderData?.instructorName ?? "Instructor";
   return [
-    { title: "Analytics — Cadence" },
-    { name: "description", content: "View your course analytics" },
+    { title: `${name} — Analytics — Cadence` },
+    { name: "description", content: `Analytics for ${name}` },
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
+export async function loader({ request, params }: Route.LoaderArgs) {
   const currentUserId = await getCurrentUserId(request);
 
   if (!currentUserId) {
-    throw data("Select a user from the DevUI panel to view analytics.", {
-      status: 401,
-    });
+    throw data("Select a user from the DevUI panel to view analytics.", { status: 401 });
   }
 
-  const user = getUserById(currentUserId);
+  const currentUser = getUserById(currentUserId);
+  if (!currentUser || currentUser.role !== UserRole.Admin) {
+    throw data("Only admins can access this page.", { status: 403 });
+  }
 
-  if (!user || (user.role !== UserRole.Instructor && user.role !== UserRole.Admin)) {
-    throw data("Only instructors and admins can access this page.", {
-      status: 403,
-    });
+  const instructorId = Number(params.instructorId);
+  if (!Number.isInteger(instructorId) || instructorId <= 0) {
+    throw data("Invalid instructor ID.", { status: 400 });
+  }
+
+  const instructor = getUserById(instructorId);
+  if (!instructor) {
+    throw data("Instructor not found.", { status: 404 });
+  }
+  if (instructor.role !== UserRole.Instructor) {
+    throw data("This user is not an instructor.", { status: 400 });
   }
 
   const url = new URL(request.url);
   const period = parsePeriod(url.searchParams.get("period"));
 
-  const summary = getInstructorSummary({ instructorId: currentUserId, period });
-  const revenueTimeSeries = getRevenueTimeSeries({ instructorId: currentUserId, period });
-  const courseBreakdown = getCourseBreakdown({ instructorId: currentUserId, period });
+  const summary = getInstructorSummary({ instructorId, period });
+  const revenueTimeSeries = getRevenueTimeSeries({ instructorId, period });
+  const courseBreakdown = getCourseBreakdown({ instructorId, period });
 
-  return { summary, revenueTimeSeries, courseBreakdown, period, role: user.role };
+  return {
+    summary,
+    revenueTimeSeries,
+    courseBreakdown,
+    period,
+    instructorName: instructor.name,
+    instructorId,
+  };
 }
 
 // ─── PeriodSelector ───────────────────────────────────────────────────────────
@@ -100,15 +116,7 @@ function PeriodSelector({ currentPeriod }: { currentPeriod: Period }) {
 
 // ─── SummaryCard ──────────────────────────────────────────────────────────────
 
-function SummaryCard({
-  value,
-  label,
-  icon,
-}: {
-  value: string;
-  label: string;
-  icon: React.ReactNode;
-}) {
+function SummaryCard({ value, label, icon }: { value: string; label: string; icon: React.ReactNode }) {
   return (
     <Card>
       <CardHeader>
@@ -140,29 +148,20 @@ function formatRating(avg: number, count: number): string {
 // ─── RevenueLineChart ─────────────────────────────────────────────────────────
 
 function formatXAxisTick(date: string): string {
-  // date is YYYY-MM-DD (daily) or YYYY-MM (monthly)
   if (date.length === 7) {
-    // Monthly: "Apr '26"
     const [year, month] = date.split("-");
     const d = new Date(Number(year), Number(month) - 1, 1);
     return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
   }
-  // Daily: "Apr 9"
   const [year, month, day] = date.split("-");
   const d = new Date(Number(year), Number(month) - 1, Number(day));
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function RevenueLineChart({
-  data: chartData,
-}: {
-  data: Array<{ date: string; revenue: number }>;
-}) {
+function RevenueLineChart({ data: chartData }: { data: Array<{ date: string; revenue: number }> }) {
   const hasData = chartData.some((d) => d.revenue > 0);
-
   if (!hasData) return null;
 
-  // Reduce label density for large datasets
   const tickCount = chartData.length;
   const tickInterval = tickCount <= 12 ? 0 : Math.floor(tickCount / 12);
 
@@ -172,17 +171,8 @@ function RevenueLineChart({
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 4, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis
-            dataKey="date"
-            tickFormatter={formatXAxisTick}
-            interval={tickInterval}
-            tick={{ fontSize: 12 }}
-          />
-          <YAxis
-            tickFormatter={(v: number) => `$${(v / 100).toLocaleString()}`}
-            tick={{ fontSize: 12 }}
-            width={64}
-          />
+          <XAxis dataKey="date" tickFormatter={formatXAxisTick} interval={tickInterval} tick={{ fontSize: 12 }} />
+          <YAxis tickFormatter={(v: number) => `$${(v / 100).toLocaleString()}`} tick={{ fontSize: 12 }} width={64} />
           <Tooltip
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             formatter={(value: any) => {
@@ -194,13 +184,7 @@ function RevenueLineChart({
               typeof label === "string" ? formatXAxisTick(label) : String(label ?? "")
             }
           />
-          <Line
-            type="monotone"
-            dataKey="revenue"
-            strokeWidth={2}
-            dot={false}
-            className="stroke-primary"
-          />
+          <Line type="monotone" dataKey="revenue" strokeWidth={2} dot={false} className="stroke-primary" />
         </LineChart>
       </ResponsiveContainer>
     </Card>
@@ -230,17 +214,9 @@ const SORT_KEYS: { key: SortKey; label: string }[] = [
 ];
 
 function SortHeader({
-  label,
-  sortKey,
-  currentKey,
-  direction,
-  onSort,
+  label, sortKey, currentKey, direction, onSort,
 }: {
-  label: string;
-  sortKey: SortKey;
-  currentKey: SortKey;
-  direction: "asc" | "desc";
-  onSort: (key: SortKey) => void;
+  label: string; sortKey: SortKey; currentKey: SortKey; direction: "asc" | "desc"; onSort: (key: SortKey) => void;
 }) {
   const active = currentKey === sortKey;
   return (
@@ -250,11 +226,7 @@ function SortHeader({
     >
       {label}
       {active ? (
-        direction === "desc" ? (
-          <ChevronDown className="size-3.5" />
-        ) : (
-          <ChevronUp className="size-3.5" />
-        )
+        direction === "desc" ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />
       ) : (
         <ChevronDown className="size-3.5 opacity-30" />
       )}
@@ -292,13 +264,7 @@ function CourseAnalyticsTable({ rows }: { rows: CourseRow[] }) {
               {SORT_KEYS.map(({ key, label }) => (
                 <th key={key} className="px-4 py-3 text-right">
                   <div className="flex justify-end">
-                    <SortHeader
-                      label={label}
-                      sortKey={key}
-                      currentKey={sortKey}
-                      direction={direction}
-                      onSort={handleSort}
-                    />
+                    <SortHeader label={label} sortKey={key} currentKey={sortKey} direction={direction} onSort={handleSort} />
                   </div>
                 </th>
               ))}
@@ -308,22 +274,12 @@ function CourseAnalyticsTable({ rows }: { rows: CourseRow[] }) {
             {sorted.map((row) => (
               <tr key={row.courseId} className="border-b last:border-0 hover:bg-muted/40">
                 <td className="px-4 py-3 font-medium">{row.title}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{formatRevenue(row.revenue)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{row.enrollments.toLocaleString()}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{row.ratingCount > 0 ? row.avgRating.toFixed(1) : "—"}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{row.ratingCount.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right tabular-nums">
-                  {formatRevenue(row.revenue)}
-                </td>
-                <td className="px-4 py-3 text-right tabular-nums">
-                  {row.enrollments.toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-right tabular-nums">
-                  {row.ratingCount > 0 ? row.avgRating.toFixed(1) : "—"}
-                </td>
-                <td className="px-4 py-3 text-right tabular-nums">
-                  {row.ratingCount.toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-right tabular-nums">
-                  {row.enrollments > 0
-                    ? `${Math.round(row.completionRate * 100)}%`
-                    : "—"}
+                  {row.enrollments > 0 ? `${Math.round(row.completionRate * 100)}%` : "—"}
                 </td>
               </tr>
             ))}
@@ -341,8 +297,8 @@ export function HydrateFallback() {
     <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
       <div className="flex items-center justify-between">
         <div>
-          <Skeleton className="h-9 w-40" />
-          <Skeleton className="mt-2 h-5 w-56" />
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="mt-2 h-5 w-64" />
         </div>
         <div className="flex gap-2">
           <Skeleton className="h-9 w-20" />
@@ -378,21 +334,17 @@ export function HydrateFallback() {
 
 // ─── Route Component ──────────────────────────────────────────────────────────
 
-export default function InstructorAnalytics({ loaderData }: Route.ComponentProps) {
-  const { summary, revenueTimeSeries, courseBreakdown, period, role } = loaderData;
+export default function AdminInstructorAnalytics({ loaderData }: Route.ComponentProps) {
+  const { summary, revenueTimeSeries, courseBreakdown, period, instructorName, instructorId } = loaderData;
   const hasActivity = summary.totalRevenue > 0 || summary.totalEnrollments > 0;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
       {/* Breadcrumb */}
       <nav className="text-sm text-muted-foreground">
-        <Link to="/" className="hover:text-foreground">
-          Home
-        </Link>
+        <Link to="/" className="hover:text-foreground">Home</Link>
         <span className="mx-2">/</span>
-        <Link to="/instructor" className="hover:text-foreground">
-          My Courses
-        </Link>
+        <Link to="/admin/users" className="hover:text-foreground">Manage Users</Link>
         <span className="mx-2">/</span>
         <span className="text-foreground">Analytics</span>
       </nav>
@@ -401,11 +353,7 @@ export default function InstructorAnalytics({ loaderData }: Route.ComponentProps
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Analytics</h1>
-          {role === UserRole.Instructor && (
-            <p className="mt-1 text-muted-foreground">
-              Track your course revenue, enrollments, and ratings
-            </p>
-          )}
+          <p className="mt-1 text-muted-foreground">{instructorName}</p>
         </div>
         <PeriodSelector key="period-selector" currentPeriod={period} />
       </div>
@@ -450,7 +398,7 @@ export default function InstructorAnalytics({ loaderData }: Route.ComponentProps
           <BarChart3 className="mb-4 size-10 text-muted-foreground/40" />
           <h2 className="text-base font-medium">No courses yet</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Create your first course to see a breakdown here.
+            This instructor hasn't created any courses.
           </p>
         </div>
       )}
@@ -467,16 +415,13 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   if (isRouteErrorResponse(error)) {
     if (error.status === 401) {
       title = "Sign in required";
-      message =
-        typeof error.data === "string"
-          ? error.data
-          : "Please select a user from the DevUI panel.";
+      message = typeof error.data === "string" ? error.data : "Please select a user from the DevUI panel.";
     } else if (error.status === 403) {
       title = "Access denied";
-      message =
-        typeof error.data === "string"
-          ? error.data
-          : "You don't have permission to access this page.";
+      message = typeof error.data === "string" ? error.data : "You don't have permission to access this page.";
+    } else if (error.status === 404) {
+      title = "Instructor not found";
+      message = typeof error.data === "string" ? error.data : "This instructor does not exist.";
     } else {
       title = `Error ${error.status}`;
       message = typeof error.data === "string" ? error.data : error.statusText;
@@ -490,8 +435,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         <h1 className="mb-2 text-2xl font-bold">{title}</h1>
         <p className="mb-6 text-muted-foreground">{message}</p>
         <div className="flex items-center justify-center gap-3">
-          <Link to="/instructor">
-            <Button variant="outline">My Courses</Button>
+          <Link to="/admin/users">
+            <Button variant="outline">Manage Users</Button>
           </Link>
           <Link to="/">
             <Button>Go Home</Button>

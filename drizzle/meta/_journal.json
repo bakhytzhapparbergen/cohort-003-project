@@ -50,6 +50,13 @@
       "when": 1775904586098,
       "tag": "0006_fast_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1777888969851,
+      "tag": "0007_aberrant_kinsey_walden",
+      "breakpoints": true
     }
   ]
 }

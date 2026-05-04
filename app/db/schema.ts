@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, unique } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, unique, index } from "drizzle-orm/sqlite-core";
 
 export enum UserRole {
   Student = "student",
@@ -303,3 +303,39 @@ export const videoWatchEvents = sqliteTable("video_watch_events", {
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
 });
+
+export enum NotificationStatus {
+  Unread = "unread",
+  Read = "read",
+}
+
+export const notifications = sqliteTable(
+  "notifications",
+  {
+    id: text("id").primaryKey(),
+    recipientUserId: integer("recipient_user_id")
+      .notNull()
+      .references(() => users.id),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    status: text("status").notNull().$type<NotificationStatus>(),
+    deepLink: text("deep_link"),
+    metadata: text("metadata"),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+    readAt: text("read_at"),
+  },
+  (table) => [
+    index("idx_notifications_recipient_created").on(
+      table.recipientUserId,
+      table.createdAt
+    ),
+    index("idx_notifications_recipient_status_created").on(
+      table.recipientUserId,
+      table.status,
+      table.createdAt
+    ),
+  ]
+);
